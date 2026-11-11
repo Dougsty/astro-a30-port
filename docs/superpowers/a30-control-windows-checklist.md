@@ -43,7 +43,13 @@ Headset paired in Windows Bluetooth settings; 2.4 GHz dongle plugged in. If some
 - [ ] Tray → Turn off, keep audio paused: countdown, the headset powers off within ~2 min.
 - [ ] Turn it on again (USB-C or Bluetooth): the app reconnects and Settings shows Sleep mode "Never".
 
-## 6. Uninstall
+## 6. Updates
+- [ ] Settings shows "A30 Control <version>", "Check for updates" and "Include beta versions" (both on).
+- [ ] When a newer release exists: a Windows notification, a banner in the tray panel and an orange
+      "Version x.y.z is available" in the window header. "Install" downloads, checks the SHA-256,
+      installs silently and the app reopens on the new version (log: `installing windows-v…`).
+
+## 6b. Uninstall
 - [ ] Settings → Apps → A30 Control → Uninstall: the app closes, the Start menu entry and the Startup entry are gone.
       `%APPDATA%\A30Control` (settings, log) stays, so a reinstall keeps profiles.
 

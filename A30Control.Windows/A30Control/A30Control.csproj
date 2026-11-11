@@ -11,7 +11,7 @@
     <AssemblyName>A30Control</AssemblyName>
     <RootNamespace>A30Control</RootNamespace>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
   </PropertyGroup>
   <ItemGroup>
     <!-- WPF and WinForms both define Application, Button, Color…: WinForms is only used fully qualified. -->

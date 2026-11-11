@@ -4,6 +4,7 @@ FramingTests.Run();
 Iap2Tests.Run();
 CodecTests.Run();
 await LinkTests.Run();
+UpdateTests.Run();
 Console.WriteLine(T.Failures == 0 ? "selftest: all passed" : $"selftest: {T.Failures} failed");
 return T.Failures == 0 ? 0 : 1;
 

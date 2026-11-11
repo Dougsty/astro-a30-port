@@ -10,4 +10,7 @@ public interface ITransport
     void Start();
     Task SendAsync(byte[] bytes);
     void Close();
+    /// BLE GATT carries CPL+CPP per write/notification without the SPP wrapper (the Android route
+    /// for the A30); RFCOMM carries SPP frames, raw or inside iAP2.
+    bool IsBle => false;
 }

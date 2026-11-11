@@ -36,6 +36,7 @@ public partial class TrayPanel : Window
 
     HeadsetModel M => (HeadsetModel)DataContext;
     void TurnOff(object sender, RoutedEventArgs e) => M.TurnOff();
+    void InstallUpdate(object sender, RoutedEventArgs e) => M.InstallUpdate();
     void CancelTurnOff(object sender, RoutedEventArgs e) => M.CancelTurnOff();
     void OpenWindow(object sender, RoutedEventArgs e) { Hide(); openWindow(); }
     void Quit(object sender, RoutedEventArgs e) => quit();

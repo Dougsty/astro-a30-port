@@ -33,6 +33,7 @@ public partial class App : Application
         model = new HeadsetModel();
         tray = new TrayIcon(model, TogglePanel, OpenWindow, Quit);
         model.Notify = tray.Toast;
+        model.RequestQuit = Quit;
         foreground = new ForegroundWatcher(model.AppActivated);
         model.Start();
         // Started by hand (Start menu, setup's last page, double-click): show the window, since new tray

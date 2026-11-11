@@ -106,6 +106,26 @@ static class LinkTests
         Check(await Wait(nf.Task) == "Volume 05 01", "notification mapped to FeatureId");
         Check(DongleStatus.From(0x05).HostType && !DongleStatus.From(0x01).HostType, "base station mode reads bit 2 (host type)");
 
+        // BLE GATT (how the Android app talks to the A30): no probe, CPL+CPP without the SPP wrapper
+        var hb = new FakeHeadset { Ble = true, OnRequest = (i, fn, sw, a) => (i, fn) switch
+        {
+            (2, 0) => [FakeHeadset.BleReply(7, 0, 0, 0x09, 0x00), FakeHeadset.BleReply(2, 0, sw, 0x2a, 0x28, 0x00)],
+            (1, 1) => [[0x01, 0x01, (byte)(0x10 | sw), 0xAA], [0x02, 0xBB]],   // CPL fragments 0 (more) and 1
+            _ => null,
+        } };
+        var linkB = new HeadsetLink { ProbeTime = TimeSpan.FromSeconds(2), RequestTimeout = TimeSpan.FromMilliseconds(500) };
+        var noteB = new TaskCompletionSource<string>();
+        linkB.Notification += (i, fn, a) => noteB.TrySetResult($"{i} {fn} {Wire.Hex(a)}");
+        var t0 = DateTime.Now;
+        await linkB.OpenAsync(hb);
+        Check(linkB.Mode == HeadsetLink.LinkMode.Ble && linkB.IsReady, "BLE transport → BLE mode, ready");
+        Check(DateTime.Now - t0 < TimeSpan.FromSeconds(1), "BLE: no probe (a 2 s probe would have run)");
+        Check(Same(await linkB.RequestAsync(2, 0), [0x2a, 0x28, 0x00]), "BLE request answered");
+        Check(hb.Sent[0][0] == 0x00 && hb.Sent[0][1] == 2 && hb.Sent[0].Length == 3, "BLE request is CPL+CPP, no SPP wrapper");
+        Check(await Wait(noteB.Task) == "7 0 09 00", "BLE swID-0 notification");
+        Check(Same(await linkB.RequestAsync(1, 1, [0]), [0xAA, 0xBB]), "BLE reply in two CPL fragments reassembled");
+        Check(!hb.Sent.Any(b => b.SequenceEqual(Wire.Iap2Detect)), "BLE never sends the iAP2 detect");
+
         // Review fix: notifications pushed while ConnectAsync builds the feature map must not throw
         // (the reader thread used to loop over the map while the UI thread filled it).
         for (int round = 0; round < 50; round++)

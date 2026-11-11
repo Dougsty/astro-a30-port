@@ -14,6 +14,10 @@
           <TextBlock Text="A30" Style="{StaticResource Caps}" Foreground="{StaticResource Muted}"/>
           <TextBlock Text="CONTROL" Style="{StaticResource Caps}" Foreground="{StaticResource Muted}"/>
         </StackPanel>
+        <Button DockPanel.Dock="Right" Style="{StaticResource Plain}" Click="InstallUpdate" Margin="16,0,0,0"
+                Visibility="{Binding UpdateVisibility}" IsEnabled="{Binding CanInstallUpdate}" ToolTip="Install the new version">
+          <TextBlock Text="{Binding UpdateText}" Foreground="{StaticResource Accent}" FontWeight="SemiBold" TextDecorations="Underline"/>
+        </Button>
         <TextBlock DockPanel.Dock="Right" Text="&#xE945;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Muted}"
                    VerticalAlignment="Center" Margin="6,0,0,0" Visibility="{Binding ChargingVisibility}"/>
         <TextBlock DockPanel.Dock="Right" Text="{Binding BatteryText}" Foreground="{StaticResource Muted}" VerticalAlignment="Center"/>

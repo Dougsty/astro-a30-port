@@ -12,6 +12,13 @@
         <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14"/>
       </DockPanel>
 
+      <Border Style="{StaticResource TrayCard}" BorderBrush="{StaticResource Accent}" Margin="0,0,0,10" Visibility="{Binding UpdateVisibility}">
+        <DockPanel>
+          <Button DockPanel.Dock="Right" Content="{Binding UpdateButtonText}" Style="{StaticResource TrayButton}" Click="InstallUpdate" IsEnabled="{Binding CanInstallUpdate}"/>
+          <TextBlock Text="{Binding UpdateText}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+        </DockPanel>
+      </Border>
+
       <StackPanel Visibility="{Binding ConnectedVisibility}">
         <Border Style="{StaticResource TrayCard}">
           <StackPanel>

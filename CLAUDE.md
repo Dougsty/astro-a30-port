@@ -28,9 +28,14 @@ convention (iRoot, iEQSet, iMixAmp), so this is Logitech's own control channel.
 The Android app opens it with `createInsecureRfcommSocketToServiceRecord(
 UUID 00001101-0000-1000-8000-00805F9B34FB)` — insecure RFCOMM, no PIN.
 
-A BLE/GATT path also exists in the app but is **not the route for this unit on
-macOS**: CoreBluetooth only sees BLE, and the A30's control channel is classic
-Bluetooth. (BLE GATT map kept at the bottom for reference.)
+A BLE/GATT path also exists in the app. On macOS we use classic ch 26 (iAP2). **On Windows ch 26
+stays completely silent** (2026-11-11: socket opens, zero bytes received, no iAP2 detect even when the
+host sends one, no reply to raw SPP frames). The Android app reaches the A30 over **BLE**: the model
+(`DeviceType.Carbonite`) comes from the BLE advertisement PID 801 (service UUID 0xFE61), SPP discovery
+yields model 0. BLE framing: each write/notification on `748E2216…` is one CPL fragment (CPL + CPP),
+**no SPP wrapper**; long replies are announced on `8F83DD07…` as `[size lo, size hi]` and read from it;
+MTU requested (MTU_SIZE). No authorize write seen in the carbonite flow. The Windows port tries BLE
+first, then RFCOMM (`Connector.cs`, `BleTransport.cs`). (GATT map at the bottom.)
 
 ### On macOS channel 26 speaks iAP2, not raw SPP (confirmed 2026-11-10)
 

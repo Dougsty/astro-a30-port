@@ -1,7 +1,6 @@
 using A30Kit;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Rfcomm;
-using Windows.Devices.Enumeration;
 using Windows.Networking.Sockets;
 using Windows.Storage.Streams;
 
@@ -29,17 +28,11 @@ sealed class RfcommTransport : ITransport
         writer = new DataWriter(s.OutputStream);
     }
 
-    public static async Task<RfcommTransport> OpenAsync(Action<string> log)
+    /// `dev` is the paired, connected classic headset (see Connector).
+    public static async Task<RfcommTransport> OpenAsync(BluetoothDevice dev, Action<string> log)
     {
-        var infos = await DeviceInformation.FindAllAsync(BluetoothDevice.GetDeviceSelectorFromPairingState(true));
-        var info = infos.FirstOrDefault(i => i.Name.Contains("A30", StringComparison.OrdinalIgnoreCase))
-                   ?? throw new A30Exception(A30ErrorKind.NotFound);
-        using var dev = await BluetoothDevice.FromIdAsync(info.Id) ?? throw new A30Exception(A30ErrorKind.NotFound);
-        // Opening RFCOMM on a disconnected headset pages it and brings the link up, overriding a manual
-        // disconnect. Only attach to a headset Windows already has connected.
-        if (dev.ConnectionStatus != BluetoothConnectionStatus.Connected) throw new A30Exception(A30ErrorKind.NotConnectedToHost);
         var res = await dev.GetRfcommServicesForIdAsync(RfcommServiceId.SerialPort, BluetoothCacheMode.Uncached);
-        log($"{info.Name}: {res.Services.Count} serial port service(s), status {res.Error}");
+        log($"{dev.Name}: {res.Services.Count} serial port service(s), status {res.Error}");
         // ponytail: first Serial Port service; the A30 lists one (ch 26). Pick by SDP channel if a unit lists more.
         var svc = res.Services.FirstOrDefault() ?? throw new A30Exception(A30ErrorKind.OpenFailed, detail: res.Error.ToString());
         var s = new StreamSocket();

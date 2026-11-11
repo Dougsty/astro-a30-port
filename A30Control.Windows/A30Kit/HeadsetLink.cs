@@ -5,7 +5,7 @@ namespace A30Kit;
 
 public sealed class HeadsetLink
 {
-    public enum LinkMode { Unknown, Raw, Iap2 }
+    public enum LinkMode { Unknown, Raw, Iap2, Ble }
 
     public TimeSpan ProbeTime { get; init; } = TimeSpan.FromMilliseconds(1500);
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromMilliseconds(1500);
@@ -69,6 +69,19 @@ public sealed class HeadsetLink
             Teardown(new A30Exception(A30ErrorKind.Disconnected), notify: true);
         };
         t.Start();
+
+        if (t.IsBle)
+        {
+            lock (gate)
+            {
+                if (gen != generation || transport == null) throw new A30Exception(A30ErrorKind.Disconnected);
+                Mode = LinkMode.Ble;
+                IsReady = true;
+                ready.TrySetResult();
+                Log("BLE GATT: CPL frames without the SPP wrapper");
+            }
+            return;
+        }
 
         await Task.Delay(ProbeTime);
         bool offerDetect;
@@ -136,6 +149,11 @@ public sealed class HeadsetLink
         {
             rxBytes += bytes.Length;
             Log("rx " + Wire.Hex(bytes));
+            if (Mode == LinkMode.Ble)
+            {
+                HandleCpl(bytes, notes);   // one notification = one CPL fragment
+                goto done;
+            }
             var events = session.Receive(bytes);
             bool detect = events.Any(e => e is Iap2Event.Send s && s.Bytes.SequenceEqual(Wire.Iap2Detect));
             if (detect && Mode != LinkMode.Iap2)
@@ -159,6 +177,7 @@ public sealed class HeadsetLink
                 }
             }
             else Parse(bytes, notes);   // raw SPP frames, and anything sent before the mode is known
+            done:;
         }
         foreach (var n in notes) Notification?.Invoke(n.Index, n.Function, n.Args);
         if (reset) Drop();
@@ -179,13 +198,18 @@ public sealed class HeadsetLink
     /// Under gate. SPP frames → CPL → CPP replies: notifications out, the matching reply to `current`.
     void Parse(byte[] bytes, List<(byte, byte, byte[])> notes)
     {
-        foreach (var payload in spp.Feed(bytes))
+        foreach (var payload in spp.Feed(bytes)) HandleCpl(payload, notes);
+    }
+
+    /// Under gate. One CPL fragment → (once complete) a CPP reply or notification.
+    void HandleCpl(byte[] payload, List<(byte, byte, byte[])> notes)
+    {
         {
-            if (cpl.Feed(payload) is not byte[] m || CppReply.Parse(m) is not CppReply r) continue;
+            if (cpl.Feed(payload) is not byte[] m || CppReply.Parse(m) is not CppReply r) return;
             // swID 0 is never used for requests, so these are always device-initiated notifications.
-            if (!r.IsError && r.SwId == 0) { notes.Add((r.Index, r.Function, r.Args)); continue; }
-            if (current is not Pending p) { Log($"unsolicited {r}"); continue; }
-            if (r.Index != p.Index || r.SwId != p.SwId) { Log($"unmatched {r}"); continue; }
+            if (!r.IsError && r.SwId == 0) { notes.Add((r.Index, r.Function, r.Args)); return; }
+            if (current is not Pending p) { Log($"unsolicited {r}"); return; }
+            if (r.Index != p.Index || r.SwId != p.SwId) { Log($"unmatched {r}"); return; }
             current = null;
             consecutiveTimeouts = 0;
             if (r.IsError)
@@ -216,8 +240,13 @@ public sealed class HeadsetLink
         sw = (byte)(sw % 15 + 1);
         p.SwId = sw;
         current = p;
-        var frame = Wire.SppWrap(Wire.CppRequest(p.Index, p.Function, p.SwId, p.Args));
-        Write(Mode == LinkMode.Iap2 ? session.EaPacket(frame) : frame);
+        var cplCpp = Wire.CppRequest(p.Index, p.Function, p.SwId, p.Args);
+        Write(Mode switch
+        {
+            LinkMode.Ble => cplCpp,
+            LinkMode.Iap2 => session.EaPacket(Wire.SppWrap(cplCpp)),
+            _ => Wire.SppWrap(cplCpp),
+        });
         _ = Task.Delay(RequestTimeout).ContinueWith(_ => OnTimeout(p));
     }
 

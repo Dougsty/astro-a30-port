@@ -13,6 +13,7 @@ public partial class MainWindow : Window
     }
 
     void CancelTurnOff(object sender, RoutedEventArgs e) => ((HeadsetModel)DataContext).CancelTurnOff();
+    void InstallUpdate(object sender, RoutedEventArgs e) => ((HeadsetModel)DataContext).InstallUpdate();
 
     /// Closing hides the window; the app stays in the tray (Quit is in the tray menu/panel).
     protected override void OnClosing(CancelEventArgs e)

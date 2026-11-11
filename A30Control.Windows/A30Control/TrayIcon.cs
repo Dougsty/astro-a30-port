@@ -20,6 +20,7 @@ sealed class TrayIcon : IDisposable
         using (var tmp = new Bitmap(s))
             baseImage = new Bitmap(tmp);   // GDI+ needs the stream alive unless copied
         icon.MouseUp += (_, e) => { if (e.Button == Forms.MouseButtons.Left) togglePanel(); };
+        icon.BalloonTipClicked += (_, _) => openWindow();
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Open window", null, (_, _) => openWindow());
         menu.Items.Add("Quit", null, (_, _) => quit());

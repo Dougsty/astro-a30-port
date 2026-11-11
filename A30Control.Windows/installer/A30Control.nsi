@@ -2,6 +2,7 @@
 ; Built on the Mac by build.sh:  makensis -DVERSION=x.y.z -DEXE=path\to\A30Control.exe A30Control.nsi
 Unicode true
 !include "MUI2.nsh"
+!include "Sections.nsh"
 
 !ifndef VERSION
   !define VERSION "1.0.0"
@@ -77,6 +78,20 @@ SectionEnd
 Section /o "Desktop shortcut" SecDesktop
   CreateShortcut "$DESKTOP\${APP}.lnk" "$INSTDIR\A30Control.exe"
 SectionEnd
+
+; Silent updates (/S, started by the app) keep the user's autostart choice and restart the app.
+Function .onInit
+  IfSilent 0 keep
+    ReadRegStr $0 HKCU "${RUN_KEY}" "A30Control"
+    StrCmp $0 "" 0 keep
+      !insertmacro UnselectSection ${SecAutostart}
+  keep:
+FunctionEnd
+
+Function .onInstSuccess
+  IfSilent 0 +2
+    Exec '"$INSTDIR\A30Control.exe"'
+FunctionEnd
 
 Section "Uninstall"
   !insertmacro CloseApp

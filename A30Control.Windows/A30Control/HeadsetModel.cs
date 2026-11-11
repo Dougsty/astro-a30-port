@@ -29,6 +29,8 @@ public sealed class HeadsetModel : INotifyPropertyChanged
 
     /// Windows toast (title, body); set by App to the tray icon's balloon.
     public Action<string, string> Notify { get; set; } = (_, _) => { };
+    /// Quits the app (set by App); used right before a silent update installs over it.
+    public Action RequestQuit { get; set; } = () => { };
 
     readonly A30Client a30 = new();
     readonly Settings settings = Store.Load();
@@ -167,6 +169,23 @@ public sealed class HeadsetModel : INotifyPropertyChanged
         }
     }
 
+    // updates
+    public Visibility UpdateVisibility => Vis(update != null);
+    public string UpdateText => update == null ? "" : updating ? $"Downloading {update.Version.ToString(3)}…" : $"Version {update.Version.ToString(3)} is available";
+    public string UpdateButtonText => Updater.IsInstalled && update?.Setup.Sha256 != null ? "Install" : "Download";
+    public bool CanInstallUpdate => !updating;
+    public string VersionText => $"A30 Control {Updater.Current.ToString(3)}";
+    public bool CheckUpdates
+    {
+        get => settings.CheckUpdates;
+        set { settings.CheckUpdates = value; Save(); Changed(); _ = CheckForUpdate(); }
+    }
+    public bool BetaUpdates
+    {
+        get => settings.BetaUpdates;
+        set { settings.BetaUpdates = value; Save(); Changed(); _ = CheckForUpdate(); }
+    }
+
     // turn off
     public int? PowerOffRemaining { get; private set; }
     public Visibility PowerOffVisibility => Vis(PowerOffRemaining != null);
@@ -179,7 +198,11 @@ public sealed class HeadsetModel : INotifyPropertyChanged
     DateTime? suspendReconnectUntil;
     CancellationTokenSource? poll;
 
-    public void Start() => Reconnect();
+    public void Start()
+    {
+        Reconnect();
+        _ = UpdateLoop();
+    }
 
     public void Shutdown()
     {
@@ -207,7 +230,7 @@ public sealed class HeadsetModel : INotifyPropertyChanged
                 Changed();
                 try
                 {
-                    var t = await RfcommTransport.OpenAsync(Log.Write);
+                    var t = await Connector.OpenAsync(Log.Write);
                     await a30.ConnectAsync(t);
                     Log.Write($"connected ({a30.Link.Mode})");
                     connected = true;
@@ -623,6 +646,57 @@ public sealed class HeadsetModel : INotifyPropertyChanged
 
     public void SetRuleMode(AppRule r, EqMode m) { r.Mode = (byte)m; Save(); Changed(); }
     public void RemoveRule(AppRule r) { settings.AppRules.Remove(r); Save(); Changed(); }
+
+    // ================= updates
+
+    AvailableUpdate? update;
+    bool updating;
+    string? notifiedUpdate;
+
+    async Task UpdateLoop()
+    {
+        await Task.Delay(TimeSpan.FromSeconds(10));
+        while (true)
+        {
+            await CheckForUpdate();
+            await Task.Delay(TimeSpan.FromHours(24));
+        }
+    }
+
+    async Task CheckForUpdate()
+    {
+        if (!settings.CheckUpdates) { update = null; Changed(); return; }
+        try { update = await Updater.CheckAsync(settings.BetaUpdates); }
+        catch (Exception e) { Log.Write("update check failed: " + e.Message); return; }
+        Changed();
+        if (update == null || notifiedUpdate == update.Tag) return;
+        notifiedUpdate = update.Tag;
+        Log.Write($"update available: {update.Tag}");
+        Notify("A30 Control update", $"Version {update.Version.ToString(3)} is available. Click to open A30 Control and install it.");
+    }
+
+    /// Installed copies download, verify and install silently; portable copies (or a release without
+    /// a checksum) open the release page.
+    public async void InstallUpdate()
+    {
+        if (update == null || updating) return;
+        if (!Updater.IsInstalled || update.Setup.Sha256 == null) { Updater.OpenPage(update.PageUrl); return; }
+        updating = true;
+        Changed();
+        try
+        {
+            await Updater.InstallAsync(update);
+            Log.Write($"installing {update.Tag}");
+            RequestQuit();
+        }
+        catch (Exception e)
+        {
+            Log.Write("update failed: " + e.Message);
+            Show("Update failed: " + e.Message);
+            updating = false;
+            Changed();
+        }
+    }
 
     // ================= alerts and helpers
 
