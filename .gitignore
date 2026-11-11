@@ -1,0 +1,18 @@
+# Third-party material: decompiled Logitech app and its extracted assets (local reference only)
+jadx/
+reference/
+*.apk
+*.xapk
+
+# Internal agent work notes
+.superpowers/
+
+# Build output, binaries, logs
+build/
+dist/
+bin/
+obj/
+*.app
+tools/a30b/a30b
+*.log
+.DS_Store
