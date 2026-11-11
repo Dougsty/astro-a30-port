@@ -10,6 +10,8 @@ public sealed class HeadsetLink
     public TimeSpan ProbeTime { get; init; } = TimeSpan.FromMilliseconds(1500);
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromMilliseconds(1500);
     public TimeSpan OpenTimeout { get; init; } = TimeSpan.FromSeconds(8);
+    /// After a silent probe the link offers the iAP2 detect itself and waits this long for an answer.
+    public TimeSpan DetectWait { get; init; } = TimeSpan.FromMilliseconds(1500);
     public Action<string> Log { get; set; } = _ => { };
     /// An established link dropped (not raised for Close()).
     public event Action? Closed;
@@ -37,6 +39,7 @@ public sealed class HeadsetLink
     readonly Queue<Pending> queue = new();
     Pending? current;
     int consecutiveTimeouts;
+    long rxBytes;   // everything received on this transport, for the silent-probe check
     byte sw;
 
     public async Task OpenAsync(ITransport t)
@@ -52,6 +55,7 @@ public sealed class HeadsetLink
             spp = new();
             cpl = new();
             consecutiveTimeouts = 0;
+            rxBytes = 0;
             Mode = LinkMode.Unknown;
             IsReady = false;
             ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -67,6 +71,19 @@ public sealed class HeadsetLink
         t.Start();
 
         await Task.Delay(ProbeTime);
+        bool offerDetect;
+        lock (gate)
+        {
+            offerDetect = gen == generation && transport != null && Mode == LinkMode.Unknown && rxBytes == 0;
+            if (offerDetect)
+            {
+                // Toward a Mac the headset sends the detect first; toward other hosts it may wait for
+                // the host to offer it. Nothing came: offer it, and fall back to raw SPP if still silent.
+                Log("nothing received during the probe: sending the iAP2 detect");
+                Write(Wire.Iap2Detect);
+            }
+        }
+        if (offerDetect) await Task.Delay(DetectWait);
         lock (gate)
         {
             if (gen == generation && transport != null && Mode == LinkMode.Unknown)
@@ -117,6 +134,7 @@ public sealed class HeadsetLink
         bool reset = false;
         lock (gate)
         {
+            rxBytes += bytes.Length;
             Log("rx " + Wire.Hex(bytes));
             var events = session.Receive(bytes);
             bool detect = events.Any(e => e is Iap2Event.Send s && s.Bytes.SequenceEqual(Wire.Iap2Detect));

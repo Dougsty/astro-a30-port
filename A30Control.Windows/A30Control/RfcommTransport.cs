@@ -1,9 +1,9 @@
-using System.IO;
 using A30Kit;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Rfcomm;
 using Windows.Devices.Enumeration;
 using Windows.Networking.Sockets;
+using Windows.Storage.Streams;
 
 namespace A30Control;
 
@@ -14,7 +14,10 @@ sealed class RfcommTransport : ITransport
     public event Action? Closed;
 
     readonly StreamSocket socket;
-    readonly Stream input, output;
+    // DataReader in Partial mode returns as soon as any bytes arrive (the headset sends 6-byte frames);
+    // DataWriter.StoreAsync pushes each write to the socket immediately.
+    readonly DataReader reader;
+    readonly DataWriter writer;
     readonly Action<string> log;
     readonly CancellationTokenSource cts = new();
 
@@ -22,8 +25,8 @@ sealed class RfcommTransport : ITransport
     {
         socket = s;
         this.log = log;
-        input = s.InputStream.AsStreamForRead();
-        output = s.OutputStream.AsStreamForWrite();
+        reader = new DataReader(s.InputStream) { InputStreamOptions = InputStreamOptions.Partial };
+        writer = new DataWriter(s.OutputStream);
     }
 
     public static async Task<RfcommTransport> OpenAsync(Action<string> log)
@@ -58,15 +61,17 @@ sealed class RfcommTransport : ITransport
 
     async Task ReadLoop()
     {
-        var buf = new byte[1024];
+        log("read loop started");
         try
         {
-            while (true)
+            while (!cts.IsCancellationRequested)
             {
-                int n = await input.ReadAsync(buf, cts.Token);
-                if (n <= 0) break;
+                uint n = await reader.LoadAsync(1024).AsTask(cts.Token);
+                if (n == 0) { log("read loop: stream closed by the headset"); break; }
+                var chunk = new byte[n];
+                reader.ReadBytes(chunk);
                 // A failing handler must not end the read loop (it would look like a disconnect).
-                try { Received?.Invoke(buf[..n]); }
+                try { Received?.Invoke(chunk); }
                 catch (Exception e) { log("receive handler failed: " + e); }
             }
         }
@@ -79,8 +84,9 @@ sealed class RfcommTransport : ITransport
 
     public async Task SendAsync(byte[] bytes)
     {
-        await output.WriteAsync(bytes);
-        await output.FlushAsync();
+        writer.WriteBytes(bytes);
+        uint stored = await writer.StoreAsync();
+        if (stored != bytes.Length) log($"write: only {stored} of {bytes.Length} bytes sent");
     }
 
     public void Close()

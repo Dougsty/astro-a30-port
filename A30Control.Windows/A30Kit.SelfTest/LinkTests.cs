@@ -8,6 +8,7 @@ static class LinkTests
         ProbeTime = TimeSpan.FromMilliseconds(50),
         RequestTimeout = TimeSpan.FromMilliseconds(200),
         OpenTimeout = TimeSpan.FromMilliseconds(300),
+        DetectWait = TimeSpan.FromMilliseconds(50),
     };
 
     static async Task<Exception?> Throws(Task t)
@@ -60,6 +61,15 @@ static class LinkTests
         Check(link2.Mode == HeadsetLink.LinkMode.Iap2, "detect → iAP2 mode");
         Check(h2.Sent.Any(b => b.SequenceEqual(Wire.Iap2Detect)), "detect echoed");
         Check(e2?.Kind == A30ErrorKind.Timeout && h2.IsClosed, "unfinished iAP2 handshake times out and closes");
+
+        // Windows: the headset stays silent until the host offers the iAP2 detect itself
+        var h5 = new FakeHeadset();
+        h5.OnSent = b => { if (b.SequenceEqual(Wire.Iap2Detect)) h5.Push(Wire.Iap2Detect); };
+        var link5 = NewLink();
+        var open5 = link5.OpenAsync(h5);
+        await Throws(open5);   // the fake can't finish the handshake; only the mode switch matters here
+        Check(h5.Sent.FirstOrDefault()?.SequenceEqual(Wire.Iap2Detect) == true, "silent probe: the host sends the iAP2 detect first");
+        Check(link5.Mode == HeadsetLink.LinkMode.Iap2, "headset answering the host's detect → iAP2 mode");
 
         // Review focus 2: silent headset → connect fails with Timeout and closes the channel
         var h3 = new FakeHeadset();

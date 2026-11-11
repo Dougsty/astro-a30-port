@@ -9,12 +9,15 @@ sealed class FakeHeadset : ITransport
     public readonly List<byte[]> Sent = new();
     public bool IsClosed;
     public Func<byte, byte, byte, byte[], byte[][]?>? OnRequest;
+    /// Called with every chunk the link sends (before OnRequest).
+    public Action<byte[]>? OnSent;
 
     public void Start() { }
 
     public Task SendAsync(byte[] b)
     {
         lock (Sent) Sent.Add(b);
+        OnSent?.Invoke(b);
         // raw request frame: 13 A0 len | CPL idx fn|sw args | crc crc
         if (b.Length >= 8 && b[0] == 0x13 && OnRequest?.Invoke(b[4], (byte)(b[5] >> 4), (byte)(b[5] & 0x0F), b[6..^2]) is byte[][] chunks)
             _ = Task.Run(() => { foreach (var c in chunks) Received?.Invoke(c); });
