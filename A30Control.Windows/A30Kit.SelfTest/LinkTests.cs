@@ -106,25 +106,28 @@ static class LinkTests
         Check(await Wait(nf.Task) == "Volume 05 01", "notification mapped to FeatureId");
         Check(DongleStatus.From(0x05).HostType && !DongleStatus.From(0x01).HostType, "base station mode reads bit 2 (host type)");
 
-        // BLE GATT (how the Android app talks to the A30): no probe, CPL+CPP without the SPP wrapper
-        var hb = new FakeHeadset { Ble = true, OnRequest = (i, fn, sw, a) => (i, fn) switch
-        {
-            (2, 0) => [FakeHeadset.BleReply(7, 0, 0, 0x09, 0x00), FakeHeadset.BleReply(2, 0, sw, 0x2a, 0x28, 0x00)],
-            (1, 1) => [[0x01, 0x01, (byte)(0x10 | sw), 0xAA], [0x02, 0xBB]],   // CPL fragments 0 (more) and 1
-            _ => null,
-        } };
-        var linkB = new HeadsetLink { ProbeTime = TimeSpan.FromSeconds(2), RequestTimeout = TimeSpan.FromMilliseconds(500) };
-        var noteB = new TaskCompletionSource<string>();
-        linkB.Notification += (i, fn, a) => noteB.TrySetResult($"{i} {fn} {Wire.Hex(a)}");
+        // 2.4 GHz dongle: no probe, CPL+CPP per message, writes complete without a reply, reads refused
+        var hd = new FakeHeadset { Dongle = true };
+        var linkD = new HeadsetLink { ProbeTime = TimeSpan.FromSeconds(2), RequestTimeout = TimeSpan.FromSeconds(5) };
+        var cd = new A30Client(linkD);
+        var noteD = new TaskCompletionSource<string>();
+        cd.Notification += (f, fn, a) => noteD.TrySetResult($"{f} {fn} {Wire.Hex(a)}");
         var t0 = DateTime.Now;
-        await linkB.OpenAsync(hb);
-        Check(linkB.Mode == HeadsetLink.LinkMode.Ble && linkB.IsReady, "BLE transport → BLE mode, ready");
-        Check(DateTime.Now - t0 < TimeSpan.FromSeconds(1), "BLE: no probe (a 2 s probe would have run)");
-        Check(Same(await linkB.RequestAsync(2, 0), [0x2a, 0x28, 0x00]), "BLE request answered");
-        Check(hb.Sent[0][0] == 0x00 && hb.Sent[0][1] == 2 && hb.Sent[0].Length == 3, "BLE request is CPL+CPP, no SPP wrapper");
-        Check(await Wait(noteB.Task) == "7 0 09 00", "BLE swID-0 notification");
-        Check(Same(await linkB.RequestAsync(1, 1, [0]), [0xAA, 0xBB]), "BLE reply in two CPL fragments reassembled");
-        Check(!hb.Sent.Any(b => b.SequenceEqual(Wire.Iap2Detect)), "BLE never sends the iAP2 detect");
+        await cd.ConnectAsync(hd);
+        Check(linkD.Mode == HeadsetLink.LinkMode.Dongle && !cd.CanRead, "dongle transport → dongle mode, write-only");
+        Check(DateTime.Now - t0 < TimeSpan.FromSeconds(1), "dongle: no probe and no feature-list request");
+        Check(hd.Sent.Count == 0, "dongle connect sends nothing");
+        Check(cd.Supports(FeatureId.Eq) && cd.Supports(FeatureId.Sidetone), "dongle uses the known feature map");
+        await cd.SetVolumeAsync(16);
+        Check(Same(hd.Sent.Last(), [0x00, 7, 0x11, 16]), "volume SET over the dongle = CPL+CPP on idx 7, done without a reply");
+        await cd.SetEqAsync(new EqSetting((byte)EqMode.Immersive, new int[5]), switching: true);
+        Check(hd.Sent.Last()[1] == 14 && hd.Sent.Last()[3] == 0x80, "EQ SET on idx 14 over the dongle");
+        Check(DateTime.Now - t0 < TimeSpan.FromSeconds(2), "dongle writes never wait for the 5 s request timeout");
+        try { await cd.BatteryAsync(); Check(false, "dongle read should throw"); }
+        catch (A30Exception e) { Check(e.Kind == A30ErrorKind.Unsupported, "dongle read → Unsupported"); }
+        hd.Push([0x00, 8, 0x00, 0x02, 0x00, 0x28, 0x01, 0x28]);
+        Check(await Wait(noteD.Task) == "Sidetone 0 02 00 28 01 28", "dongle notification (status burst) mapped to its feature");
+        Check(!hd.Sent.Any(b => b.SequenceEqual(Wire.Iap2Detect)), "dongle never sends the iAP2 detect");
 
         // Review fix: notifications pushed while ConnectAsync builds the feature map must not throw
         // (the reader thread used to loop over the map while the UI thread filled it).

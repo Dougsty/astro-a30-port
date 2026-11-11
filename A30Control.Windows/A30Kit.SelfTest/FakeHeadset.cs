@@ -8,9 +8,9 @@ sealed class FakeHeadset : ITransport
     public event Action? Closed;
     public readonly List<byte[]> Sent = new();
     public bool IsClosed;
-    /// Speaks like the A30 over BLE GATT: CPL+CPP per write/notification, no SPP wrapper.
-    public bool Ble { get; init; }
-    bool ITransport.IsBle => Ble;
+    /// Speaks like the A30 behind the 2.4 GHz dongle: CPL+CPP per message, never answers requests.
+    public bool Dongle { get; init; }
+    bool ITransport.IsDongle => Dongle;
     public Func<byte, byte, byte, byte[], byte[][]?>? OnRequest;
     /// Called with every chunk the link sends (before OnRequest).
     public Action<byte[]>? OnSent;
@@ -23,9 +23,7 @@ sealed class FakeHeadset : ITransport
         OnSent?.Invoke(b);
         // raw request frame: 13 A0 len | CPL idx fn|sw args | crc crc
         byte[][]? chunks = null;
-        if (Ble && b.Length >= 3)
-            chunks = OnRequest?.Invoke(b[1], (byte)(b[2] >> 4), (byte)(b[2] & 0x0F), b[3..]);
-        else if (!Ble && b.Length >= 8 && b[0] == 0x13)
+        if (!Dongle && b.Length >= 8 && b[0] == 0x13)
             chunks = OnRequest?.Invoke(b[4], (byte)(b[5] >> 4), (byte)(b[5] & 0x0F), b[6..^2]);
         if (chunks != null)
             _ = Task.Run(() => { foreach (var c in chunks) Received?.Invoke(c); });
@@ -37,6 +35,5 @@ sealed class FakeHeadset : ITransport
     public void Drop() => Closed?.Invoke();
 
     public static byte[] Reply(byte idx, byte fn, byte sw, params byte[] args) => Wire.SppWrap([0x00, idx, (byte)(fn << 4 | sw), .. args]);
-    public static byte[] BleReply(byte idx, byte fn, byte sw, params byte[] args) => [0x00, idx, (byte)(fn << 4 | sw), .. args];
     public static byte[] Error(byte idx, byte fn, byte sw, byte code) => Wire.SppWrap([0x00, 0xFF, idx, (byte)(fn << 4 | sw), code]);
 }

@@ -35,7 +35,7 @@ public sealed class A30Exception(A30ErrorKind kind, CenturionError? device = nul
         A30ErrorKind.OpenFailed => $"Could not open the control channel ({detail})",
         A30ErrorKind.Timeout => "The headset did not answer",
         A30ErrorKind.Disconnected => "Headset disconnected",
-        A30ErrorKind.Unsupported => "Not available on this headset",
+        A30ErrorKind.Unsupported => detail is null ? "Not available on this headset" : $"Not available ({detail})",
         A30ErrorKind.BadReply => "Unexpected reply from the headset",
         _ => d switch
         {

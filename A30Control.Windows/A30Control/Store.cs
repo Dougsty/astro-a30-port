@@ -24,6 +24,8 @@ public sealed class Settings
     public int[] LastCustomBands { get; set; } = [0, 0, 0, 0, 0];
     /// Survives quitting: put the sleep mode back to "never" on the next connect after Turn off.
     public bool RestoreSleepNever { get; set; }
+    /// Last known EQ/mic/balance, for the dongle route (which can't read the headset).
+    public Profile? LastState { get; set; }
     public bool CheckUpdates { get; set; } = true;
     /// Windows builds are all betas for now, so beta updates are on by default.
     public bool BetaUpdates { get; set; } = true;

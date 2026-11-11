@@ -5,7 +5,7 @@ namespace A30Kit;
 
 public sealed class HeadsetLink
 {
-    public enum LinkMode { Unknown, Raw, Iap2, Ble }
+    public enum LinkMode { Unknown, Raw, Iap2, Dongle }
 
     public TimeSpan ProbeTime { get; init; } = TimeSpan.FromMilliseconds(1500);
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromMilliseconds(1500);
@@ -70,15 +70,15 @@ public sealed class HeadsetLink
         };
         t.Start();
 
-        if (t.IsBle)
+        if (t.IsDongle)
         {
             lock (gate)
             {
                 if (gen != generation || transport == null) throw new A30Exception(A30ErrorKind.Disconnected);
-                Mode = LinkMode.Ble;
+                Mode = LinkMode.Dongle;
                 IsReady = true;
                 ready.TrySetResult();
-                Log("BLE GATT: CPL frames without the SPP wrapper");
+                Log("2.4 GHz dongle: CPL frames, writes only (the headset never answers requests)");
             }
             return;
         }
@@ -149,9 +149,9 @@ public sealed class HeadsetLink
         {
             rxBytes += bytes.Length;
             Log("rx " + Wire.Hex(bytes));
-            if (Mode == LinkMode.Ble)
+            if (Mode == LinkMode.Dongle)
             {
-                HandleCpl(bytes, notes);   // one notification = one CPL fragment
+                HandleCpl(bytes, notes);   // one report = one CPL fragment
                 goto done;
             }
             var events = session.Receive(bytes);
@@ -222,13 +222,13 @@ public sealed class HeadsetLink
         }
     }
 
-    /// Under gate. Sends stay in order.
-    void Write(byte[] b)
+    /// Under gate. Sends stay in order; the task ends once this write is done (or failed and logged).
+    Task Write(byte[] b)
     {
         var t = transport;
-        if (t == null) return;
+        if (t == null) return Task.CompletedTask;
         Log("tx " + Wire.Hex(b));
-        sendChain = sendChain.ContinueWith(_ => t.SendAsync(b)).Unwrap()
+        return sendChain = sendChain.ContinueWith(_ => t.SendAsync(b)).Unwrap()
             .ContinueWith(x => { if (x.IsFaulted) Log("write failed: " + x.Exception?.GetBaseException().Message); });
     }
 
@@ -241,12 +241,15 @@ public sealed class HeadsetLink
         p.SwId = sw;
         current = p;
         var cplCpp = Wire.CppRequest(p.Index, p.Function, p.SwId, p.Args);
-        Write(Mode switch
+        if (Mode == LinkMode.Dongle)
         {
-            LinkMode.Ble => cplCpp,
-            LinkMode.Iap2 => session.EaPacket(Wire.SppWrap(cplCpp)),
-            _ => Wire.SppWrap(cplCpp),
-        });
+            // No reply ever comes over the dongle: a request is done once its report is sent.
+            Write(cplCpp).ContinueWith(_ => p.Tcs.TrySetResult([]));
+            current = null;
+            Pump();
+            return;
+        }
+        Write(Mode == LinkMode.Iap2 ? session.EaPacket(Wire.SppWrap(cplCpp)) : Wire.SppWrap(cplCpp));
         _ = Task.Delay(RequestTimeout).ContinueWith(_ => OnTimeout(p));
     }
 

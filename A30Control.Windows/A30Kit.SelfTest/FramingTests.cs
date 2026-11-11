@@ -85,5 +85,15 @@ static class FramingTests
         Check(cm.Count == 1 && cm[0].Id == 0x1D02 && Same(cm[0].Params.FirstOrDefault()?.Data, [7]), "control message completes");
         Check(Wire.IapText([.. "A30"u8, 0]) == "A30", "text with NUL");
         Check(Wire.IapText([0x01, 0x02]) == null, "binary is not text");
+
+        // 2.4 GHz dongle report 0xF2, captured on the Mac (2026-11-11)
+        var volNote = Bytes("f2 00 00 0c 1e 82 40 00 00 f2 00 05 00 00 00 00 07 00 10 00" + string.Concat(Enumerable.Repeat(" 00", 27)));
+        Check(Same(Wire.DongleUnwrap(volNote), [0x00, 0x07, 0x00, 0x10, 0x00]), "dongle volume notification → CPL+CPP");
+        var echo = Bytes("f2 00 00 1e 1e 82 40 00 00 f2 00 03 00 00 00 00 02 01" + string.Concat(Enumerable.Repeat(" 00", 29)));
+        Check(Wire.DongleUnwrap(echo) == null, "dongle loopback echo ignored");
+        var setVol = Wire.DongleWrap([0x00, 0x07, 0x11, 0x10]);
+        Check(setVol.Length == 47 && Same(setVol[..19], Bytes("f2 00 01 1e 0c 82 40 00 00 f2 00 04 00 00 00 00 07 11 10")) && setVol[19..].All(x => x == 0),
+              "dongle volume SET report (heard on the headset)");
     }
+
 }

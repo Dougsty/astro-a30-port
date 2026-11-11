@@ -1,5 +1,6 @@
-// Typed API for the A30. Feature indexes come from the headset's own feature list at connect,
-// never from constants, so a firmware that reorders features still works.
+// Typed API for the A30. Feature indexes come from the headset's own feature list at connect, so a
+// firmware that reorders features still works. Over the 2.4 GHz dongle the headset never answers, so
+// there the list is the one read from Doug's unit (fw 1.0.59) and every read throws Unsupported.
 namespace A30Kit;
 
 public sealed class A30Client
@@ -25,15 +26,27 @@ public sealed class A30Client
     public event Action<FeatureId, byte, byte[]>? Notification;
     public event Action? Closed;
 
+    /// iFeatureSet order on the A30 (idx 0…15), confirmed over Bluetooth and by the dongle's notifications.
+    static readonly ushort[] KnownFeatures =
+        [0x0000, 0x0001, 0x0104, 0x0100, 0x0101, 0x0601, 0x060B, 0x0200, 0x0604, 0x0608, 0x0609, 0x060A, 0x0108, 0x010A, 0x0201, 0x0004];
+
+    /// False over the dongle: only writes and the headset's own notifications.
+    public bool CanRead => Link.Mode != HeadsetLink.LinkMode.Dongle;
+
     public async Task ConnectAsync(ITransport t)
     {
         index = new();
         byIndex = new();
         await Link.OpenAsync(t);
-        byte[] list;
-        try { list = await Link.RequestAsync(1, 1, [0]); }   // iFeatureSet (always idx 1) GET_FEATURE_ID(0)
-        catch { Link.Close(); throw; }
-        var ids = Codec.ParseFeatureList(list);
+        List<ushort> ids;
+        if (!CanRead) ids = [.. KnownFeatures];
+        else
+        {
+            byte[] list;
+            try { list = await Link.RequestAsync(1, 1, [0]); }   // iFeatureSet (always idx 1) GET_FEATURE_ID(0)
+            catch { Link.Close(); throw; }
+            ids = Codec.ParseFeatureList(list);
+        }
         var built = new Dictionary<ushort, byte>();
         var reverse = new Dictionary<byte, FeatureId>();
         for (int i = 0; i < ids.Count; i++)
@@ -53,44 +66,47 @@ public sealed class A30Client
         index.TryGetValue((ushort)f, out var i) ? Link.RequestAsync(i, fn, args)
                                                  : Task.FromException<byte[]>(new A30Exception(A30ErrorKind.Unsupported));
 
+    Task<byte[]> Get(FeatureId f, byte fn, params byte[] args) => CanRead ? Call(f, fn, args)
+        : Task.FromException<byte[]>(new A30Exception(A30ErrorKind.Unsupported, detail: "not readable over the 2.4 GHz dongle"));
+
     static A30Exception Bad() => new(A30ErrorKind.BadReply);
 
     // ---- reads
 
-    public async Task<Battery> BatteryAsync() => Battery.Parse(await Call(FeatureId.Battery, 0)) ?? throw Bad();
-    public async Task<string> NameAsync() => Codec.ParseName(await Call(FeatureId.DeviceName, 0)) ?? throw Bad();
-    public async Task<string> FirmwareAsync() => Codec.ParseFirmware(await Call(FeatureId.DeviceInfo, 1)) ?? throw Bad();
-    public async Task<string> SerialAsync() => Codec.ParseLengthString(await Call(FeatureId.DeviceInfo, 2)) ?? throw Bad();
+    public async Task<Battery> BatteryAsync() => Battery.Parse(await Get(FeatureId.Battery, 0)) ?? throw Bad();
+    public async Task<string> NameAsync() => Codec.ParseName(await Get(FeatureId.DeviceName, 0)) ?? throw Bad();
+    public async Task<string> FirmwareAsync() => Codec.ParseFirmware(await Get(FeatureId.DeviceInfo, 1)) ?? throw Bad();
+    public async Task<string> SerialAsync() => Codec.ParseLengthString(await Get(FeatureId.DeviceInfo, 2)) ?? throw Bad();
 
     /// iVolumeSet GET: [level 0–31, muted].
     public async Task<(int Level, bool? Muted)> VolumeAsync()
     {
-        var a = await Call(FeatureId.Volume, 0);
+        var a = await Get(FeatureId.Volume, 0);
         if (a.Length == 0) throw Bad();
         return (a[0], a.Length > 1 ? a[1] != 0 : (bool?)null);
     }
 
-    public async Task<EqSetting> EqAsync() => EqSetting.Parse(await Call(FeatureId.Eq, 0)) ?? throw Bad();
-    public async Task<byte[]> EqModesAsync() => (await Call(FeatureId.Eq, 2)).Skip(1).ToArray();
-    public async Task<Dictionary<Mic, int>> SidetoneAsync() => Codec.ParseMicValues(await Call(FeatureId.Sidetone, 0));
+    public async Task<EqSetting> EqAsync() => EqSetting.Parse(await Get(FeatureId.Eq, 0)) ?? throw Bad();
+    public async Task<byte[]> EqModesAsync() => (await Get(FeatureId.Eq, 2)).Skip(1).ToArray();
+    public async Task<Dictionary<Mic, int>> SidetoneAsync() => Codec.ParseMicValues(await Get(FeatureId.Sidetone, 0));
 
     public async Task<Dictionary<Mic, NoiseGate>> NoiseGateAsync() =>
-        Codec.ParseMicValues(await Call(FeatureId.NoiseGate, 0))
+        Codec.ParseMicValues(await Get(FeatureId.NoiseGate, 0))
              .Where(kv => Enum.IsDefined((NoiseGate)kv.Value))
              .ToDictionary(kv => kv.Key, kv => (NoiseGate)kv.Value);
 
-    public async Task<int> BalanceAsync() { var a = await Call(FeatureId.Mix, 0); return a.Length > 0 ? a[0] : throw Bad(); }
-    public async Task<DongleStatus> DongleAsync() { var a = await Call(FeatureId.Dongle, 0); return DongleStatus.From(a.Length > 0 ? a[0] : (byte)0); }
+    public async Task<int> BalanceAsync() { var a = await Get(FeatureId.Mix, 0); return a.Length > 0 ? a[0] : throw Bad(); }
+    public async Task<DongleStatus> DongleAsync() { var a = await Get(FeatureId.Dongle, 0); return DongleStatus.From(a.Length > 0 ? a[0] : (byte)0); }
 
     public async Task<SleepTimer> SleepAsync()
     {
-        var a = await Call(FeatureId.AutoSleep, 0);
+        var a = await Get(FeatureId.AutoSleep, 0);
         return a.Length > 0 && Enum.IsDefined((SleepTimer)a[0]) ? (SleepTimer)a[0] : throw Bad();
     }
 
     public async Task<Tones> TonesAsync()
     {
-        var a = await Call(FeatureId.Tones, 0);
+        var a = await Get(FeatureId.Tones, 0);
         return a.Length > 0 && Enum.IsDefined((Tones)a[0]) ? (Tones)a[0] : throw Bad();
     }
 

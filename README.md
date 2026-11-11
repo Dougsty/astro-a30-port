@@ -89,8 +89,13 @@ A30Control.Windows/build.sh      # → dist/A30Control-Setup-<version>.exe and t
 
 On the PC run the setup (per-user, no admin rights; SmartScreen: "More info → Run anyway"). It adds a
 Start menu entry, optional "Start with Windows" and an entry in Settings → Apps to uninstall. Logs and
-settings live in `%APPDATA%\A30Control\`. The app detects whether the headset speaks iAP2 (as toward a
-Mac) or plain SPP (as toward Android). Manual test list: `docs/superpowers/a30-control-windows-checklist.md`.
+settings live in `%APPDATA%\A30Control\`. Manual test list: `docs/superpowers/a30-control-windows-checklist.md`.
+
+On Windows the app controls the headset **through the 2.4 GHz dongle** (USB): toward a Windows PC the
+headset never answers on its Bluetooth control channel. Over the dongle the headset accepts every
+setting but can't be queried, so the app shows what the headset pushes (a full status when it links to
+the dongle, then volume, battery and mic changes) and remembers the last known state. Firmware, serial,
+sleep mode and tones aren't shown there.
 
 ---
 

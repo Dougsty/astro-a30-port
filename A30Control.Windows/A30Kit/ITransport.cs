@@ -1,6 +1,6 @@
 namespace A30Kit;
 
-/// A byte pipe to the headset's control channel (RFCOMM on Windows, a fake in the selftest).
+/// A byte pipe to the headset's control channel (dongle HID or RFCOMM on Windows, a fake in the selftest).
 public interface ITransport
 {
     event Action<byte[]>? Received;
@@ -10,7 +10,7 @@ public interface ITransport
     void Start();
     Task SendAsync(byte[] bytes);
     void Close();
-    /// BLE GATT carries CPL+CPP per write/notification without the SPP wrapper (the Android route
-    /// for the A30); RFCOMM carries SPP frames, raw or inside iAP2.
-    bool IsBle => false;
+    /// The 2.4 GHz dongle: each send/receive is one CPL+CPP message (the transport adds and strips the
+    /// HID report header), and the headset never answers requests. RFCOMM carries SPP frames.
+    bool IsDongle => false;
 }

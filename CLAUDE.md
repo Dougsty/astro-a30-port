@@ -30,12 +30,10 @@ UUID 00001101-0000-1000-8000-00805F9B34FB)` — insecure RFCOMM, no PIN.
 
 A BLE/GATT path also exists in the app. On macOS we use classic ch 26 (iAP2). **On Windows ch 26
 stays completely silent** (2026-11-11: socket opens, zero bytes received, no iAP2 detect even when the
-host sends one, no reply to raw SPP frames). The Android app reaches the A30 over **BLE**: the model
-(`DeviceType.Carbonite`) comes from the BLE advertisement PID 801 (service UUID 0xFE61), SPP discovery
-yields model 0. BLE framing: each write/notification on `748E2216…` is one CPL fragment (CPL + CPP),
-**no SPP wrapper**; long replies are announced on `8F83DD07…` as `[size lo, size hi]` and read from it;
-MTU requested (MTU_SIZE). No authorize write seen in the carbonite flow. The Windows port tries BLE
-first, then RFCOMM (`Connector.cs`, `BleTransport.cs`). (GATT map at the bottom.)
+host sends one, no reply to raw SPP frames). BLE is no way out either: the A30 sends **no BLE
+advertisements** while connected (Mac scan next to it), so Windows can't find it (1.0.2 tried; removed).
+**The Windows route is the 2.4 GHz dongle over USB HID** (see "2.4 GHz dongle over USB HID"):
+`Connector.cs` opens `DongleTransport.cs` when the dongle is plugged in, else RFCOMM. (GATT map at the bottom.)
 
 ### On macOS channel 26 speaks iAP2, not raw SPP (confirmed 2026-11-10)
 
@@ -339,6 +337,42 @@ makes the app icon (clipped to the macOS shape) and the menu bar template glyph 
 Toolchain notes: SwiftPM is broken with these Command Line Tools and SwiftUI's
 `@State`/`@Binding` are macros needing Xcode's plugin — so everything is built with
 `swiftc` and all view state lives in the `@Observable` `HeadsetModel`.
+
+## 2.4 GHz dongle over USB HID (probed 2026-11-11; the Windows route since 1.0.3)
+
+Why: on Windows, RFCOMM ch 26 opens but the A30 never answers (no iAP2, no raw SPP; once it closed the
+channel right after a raw frame), and the A30 sends **no BLE advertisements** while connected (CoreBluetooth
+scan from the Mac next to the headset, 2026-11-11). After a closed RFCOMM session Windows reports
+WSAEADDRINUSE for ~2 min.
+
+Dongle: VID 0x9886, PID 0x004F, product "ASTRO A30"; interface 0 HID (consumer keys + vendor pages
+0xFF03/0xFF00), interfaces 1–5 audio ("Game", "Voice"). Opening it from a bundled app needs no TCC prompt.
+Vendor reports: 0xF2 (in/out/feature, 46 bytes), 0xF3 (same, 256-byte data), 0xF0/0xF1 (feature, look like
+firmware/DFU — don't write), 0x64 / 0x65 small inputs. Feature GET of 0xF2/0xF3 stalls (e0005000).
+
+**Headset → host works:** the headset's swID-0 notifications arrive as input 0xF2:
+`f2 | a b | 0c 1e 82 40 00 00 f2 00 LEN 00 00 00 | CPL+CPP payload (LEN bytes)`, a = b = 0, same feature
+indexes as Bluetooth. Seen: `00 07 00 10 00` volume 16; `00 02 00 48 46 00` battery 72/70 %;
+`00 08 00 02 00 28 01 28` sidetone; `00 09 00 02 00 00 01 00` noise gate; `00 0a 00 0a` mix 10;
+`00 0e 00 04 00…` EQ Custom. On (re)link the headset pushes a full status burst (mix, sidetone, gate, EQ,
+volume, battery).
+
+**Host → headset not cracked:** an output 0xF2 in the same layout with b = 1 is echoed back unchanged except
+header byte 0 → `1e` (b = 0 or 2–6: no reaction). Header byte 2 must be `82` (other values → payload
+`5b f0 e6`, an error); header bytes 0, 3, 4, 5 seem ignored; byte 6 must be `f2`, byte 7 `00`; field a
+must be 0 or 15. Reading header bytes 0/1 as source/destination (headset `0c` → host `1e`), destination
+`1e` is a loopback.
+
+**Host → headset works (confirmed by ear, 2026-11-11):** output 0xF2, a = 0, b = 1, header
+`1e 0c 82 40 00 00 f2 00 LEN 00 00 00`, payload CPL+CPP. Volume SET `00 07 11 <level>` sequence 2 → 16 → 6
+was heard on the headset, twice. The headset sends **no reply and no notification** for SETs, and no reply
+to any GET (swID 1 or 0, sources 1e/00/0c/1d/1f/82/40, a 0/15, b 1–3). So over the dongle: writes yes,
+reads only from the unsolicited notifications (wheel/battery/mic changes and the full burst on link).
+Windows 1.0.3: `LinkMode.Dongle`, requests complete once sent, `A30Client.CanRead` false (reads throw
+Unsupported, the fixed 16-feature map replaces the feature list), the model fills EQ/sidetone/noise gate/
+mix/volume/battery from notifications and keeps the last known state in `settings.json` (`LastState`).
+Firmware, serial, name, sleep and tones stay unknown over the dongle.
+No ASTRO web/WebHID updater for the A30 found. Probe tools are throwaway Swift (IOHIDManager).
 
 ## Reference: BLE GATT map (not the active route)
 

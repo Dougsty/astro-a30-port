@@ -41,6 +41,34 @@ public static class Wire
     public static byte[] CppRequest(byte index, byte function, byte swId, byte[] args) =>
         [0x00, index, (byte)((function << 4) | (swId & 0x0F)), .. args];
 
+    // ---- 2.4 GHz dongle (USB HID, vendor page 0xFF03, VID 0x9886 PID 0x004F)
+    // Report 0xF2 = [id, a, b, 12-byte header, 32-byte payload]. Header bytes 0/1 = source/destination
+    // (headset 0x0c, host 0x1e), byte 8 = payload length; the payload is CPL+CPP, no SPP wrapper.
+    // Host → headset needs a = 0, b = 1. The headset applies SETs but never replies (see CLAUDE.md).
+
+    public const byte DongleReport = 0xF2;
+    public const int DongleReportLength = 47, DonglePayloadMax = 32;
+
+    public static byte[] DongleWrap(byte[] cplCpp)
+    {
+        // ponytail: one 0xF2 report; longer messages would need 0xF3 (256 bytes), unused by our writes.
+        if (cplCpp.Length > DonglePayloadMax) throw new ArgumentException("dongle payload over 32 bytes");
+        var r = new byte[DongleReportLength];
+        r[0] = DongleReport;
+        r[2] = 1;
+        new byte[] { 0x1e, 0x0c, 0x82, 0x40, 0, 0, 0xf2, 0, (byte)cplCpp.Length, 0, 0, 0 }.CopyTo(r, 3);
+        cplCpp.CopyTo(r, 15);
+        return r;
+    }
+
+    /// Input report from the headset (source 0x0c → host 0x1e) → its CPL+CPP payload; null otherwise.
+    public static byte[]? DongleUnwrap(byte[] r)
+    {
+        if (r.Length < 15 || r[0] != DongleReport || r[3] != 0x0c || r[4] != 0x1e) return null;
+        int n = r[11];
+        return 15 + n <= r.Length ? r[15..(15 + n)] : null;
+    }
+
     // ---- iAP2
 
     public static readonly byte[] Iap2Detect = [0xFF, 0x55, 0x02, 0x00, 0xEE, 0x10];

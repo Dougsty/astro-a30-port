@@ -234,7 +234,7 @@ public sealed class HeadsetModel : INotifyPropertyChanged
                     await a30.ConnectAsync(t);
                     Log.Write($"connected ({a30.Link.Mode})");
                     connected = true;
-                    status = "Connected";
+                    status = a30.CanRead ? "Connected" : "Connected (2.4 GHz dongle)";
                     Changed();
                     await FinishTurnOffIfNeeded();
                     await RefreshAll();
@@ -274,6 +274,22 @@ public sealed class HeadsetModel : INotifyPropertyChanged
 
     async Task RefreshAll()
     {
+        if (!a30.CanRead)
+        {
+            // Over the dongle nothing can be read: show the last known state until the headset's own
+            // notifications (a full burst whenever it links to the dongle) bring the real values.
+            dongle = DongleStatus.From(0x01);
+            if (settings.LastState is Profile p)
+            {
+                if (Enum.IsDefined((EqMode)p.EqMode)) eq = new EqSetting(p.EqMode, p.Bands.ToArray());
+                sidetone = p.Sidetone.Where(kv => Enum.IsDefined((Mic)kv.Key)).ToDictionary(kv => (Mic)kv.Key, kv => kv.Value);
+                noiseGate = p.NoiseGate.Where(kv => Enum.IsDefined((Mic)kv.Key) && Enum.IsDefined((NoiseGate)kv.Value))
+                                       .ToDictionary(kv => (Mic)kv.Key, kv => (NoiseGate)kv.Value);
+                balance = p.Balance;
+            }
+            Changed();
+            return;
+        }
         await Try(() => a30.BatteryAsync(), SetBattery);
         await Try(() => a30.NameAsync(), v => name = v);
         await Try(() => a30.FirmwareAsync(), v => firmware = v);
@@ -309,7 +325,7 @@ public sealed class HeadsetModel : INotifyPropertyChanged
         while (true)
         {
             try { await Task.Delay(60_000, ct); } catch (TaskCanceledException) { return; }
-            if (!connected) return;
+            if (!connected || !a30.CanRead) return;   // the dongle only pushes
             try { SetBattery(await a30.BatteryAsync()); }
             catch (A30Exception e) when (e.Kind == A30ErrorKind.Disconnected) { Disconnected(); return; }
             catch { }
@@ -338,10 +354,32 @@ public sealed class HeadsetModel : INotifyPropertyChanged
             case FeatureId.Eq when !debounce.ContainsKey("eq") && eqWrites == 0:
                 if (EqSetting.Parse(a) is EqSetting e) StoreEq(e);
                 break;
+            // Pushed with the full status burst when the headset links to the dongle.
+            case FeatureId.Sidetone when !debounce.Keys.Any(k => k.StartsWith("sidetone")):
+                foreach (var (m, v) in Codec.ParseMicValues(a)) sidetone[m] = v;
+                break;
+            case FeatureId.NoiseGate:
+                foreach (var (m, v) in Codec.ParseMicValues(a))
+                    if (Enum.IsDefined((NoiseGate)v)) noiseGate[m] = (NoiseGate)v;
+                break;
+            case FeatureId.Mix when !debounce.ContainsKey("balance"):
+                if (a.Length > 0) balance = a[0];
+                break;
             default:
                 return;
         }
+        Remember();
         Changed();
+    }
+
+    /// Last known settings, shown on the next start over the dongle (which can't read them).
+    void Remember()
+    {
+        if (a30.CanRead || eq == null) return;
+        settings.LastState = new Profile(Guid.Empty, "", eq.Mode, eq.Bands.ToArray(),
+            sidetone.ToDictionary(kv => (byte)kv.Key, kv => kv.Value),
+            noiseGate.ToDictionary(kv => (byte)kv.Key, kv => (byte)kv.Value), balance);
+        Save();
     }
 
     // ================= writes: every SET is followed by a GET; the UI shows what the headset reports
@@ -349,7 +387,8 @@ public sealed class HeadsetModel : INotifyPropertyChanged
     async Task Write(Func<Task> op, Func<Task> reread)
     {
         try { await op(); } catch (Exception e) { Show(e.Message); }
-        try { await reread(); } catch { }
+        if (a30.CanRead) { try { await reread(); } catch { } }
+        else Remember();   // the dongle can't read back: trust what was sent
         Changed();
     }
 
