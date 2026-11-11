@@ -4,9 +4,7 @@ Native macOS app to control the **ASTRO A30** headset without the Logitech G app
 reverse-engineering the headset's control protocol. It lives in the menu bar, opens a window in the
 style of the ASTRO Command Center, and adds a few things the official app doesn't have.
 
-> Personal interoperability project for my own headset. Not affiliated with Logitech/ASTRO. Assets
-> extracted from the official app are kept only as a local reference (`reference/original-app/`) and
-> are not part of the app.
+> Personal interoperability project. Not affiliated with or endorsed by Logitech/ASTRO.
 
 ---
 
@@ -78,6 +76,24 @@ TCC (the Bluetooth permission belongs to the bundle).
 
 ---
 
+## Windows
+
+`A30Control.Windows/` is a C#/.NET 8 WPF port with the same features: tray icon + panel instead of the
+menu bar, "Start with Windows" instead of "Open at login". Built on the Mac (needs the .NET 8 SDK in
+`~/.dotnet` and `brew install makensis`):
+
+```bash
+A30Control.Windows/selftest.sh   # protocol tests, no headset
+A30Control.Windows/build.sh      # → dist/A30Control-Setup-<version>.exe and the portable dist/A30Control.exe
+```
+
+On the PC run the setup (per-user, no admin rights; SmartScreen: "More info → Run anyway"). It adds a
+Start menu entry, optional "Start with Windows" and an entry in Settings → Apps to uninstall. Logs and
+settings live in `%APPDATA%\A30Control\`. The app detects whether the headset speaks iAP2 (as toward a
+Mac) or plain SPP (as toward Android). Manual test list: `docs/superpowers/a30-control-windows-checklist.md`.
+
+---
+
 ## How it works
 
 The A30 exposes a control channel on **RFCOMM channel 26** (classic Bluetooth). When the host is a
@@ -136,10 +152,9 @@ A30Control/            the app
   Tests/               protocol tests (real bytes captured from the headset)
   Tools/prepicon.swift makes the app icon, menu bar glyph and logo from Assets/icon.png
   build.sh install.sh test.sh probe.sh
+A30Control.Windows/    Windows port (C#/.NET 8, WPF) + NSIS installer
 tools/a30b/            diagnostic tool: raw commands (--seq), SDP dump (--sdp)
 docs/superpowers/      spec, implementation plan and manual checklist
-reference/original-app/ images, colors, fonts and layouts from the official app (reference only)
-jadx/                  decompiled Android app
 archive/               old attempts (plain SPP, Python)
 CLAUDE.md              full protocol notes
 ```

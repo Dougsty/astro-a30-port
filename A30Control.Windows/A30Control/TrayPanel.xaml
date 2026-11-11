@@ -1,0 +1,105 @@
+<Window x:Class="A30Control.TrayPanel"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False"
+        Topmost="True" ResizeMode="NoResize" SizeToContent="Height" Width="350"
+        Foreground="{StaticResource Text}" FontFamily="Segoe UI" FontSize="13">
+  <Border Background="#1E1E1E" BorderBrush="#383838" BorderThickness="1" CornerRadius="12" Padding="10">
+    <StackPanel>
+      <DockPanel Margin="4,2,4,10">
+        <TextBlock DockPanel.Dock="Right" Text="{Binding BatteryText}"/>
+        <TextBlock DockPanel.Dock="Right" Text="&#xE945;" FontFamily="Segoe MDL2 Assets" Margin="0,2,6,0" Visibility="{Binding ChargingVisibility}"/>
+        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14"/>
+      </DockPanel>
+
+      <StackPanel Visibility="{Binding ConnectedVisibility}">
+        <Border Style="{StaticResource TrayCard}">
+          <StackPanel>
+            <DockPanel>
+              <TextBlock Text="&#xE767;" Style="{StaticResource TrayIcon}"/>
+              <StackPanel>
+                <TextBlock Text="Volume" Style="{StaticResource TrayLabel}"/>
+                <DockPanel IsEnabled="{Binding HasVolume}">
+                  <TextBlock DockPanel.Dock="Right" Text="{Binding VolumeText}" Width="40" TextAlignment="Right"/>
+                  <Slider Minimum="0" Maximum="31" IsSnapToTickEnabled="True" TickFrequency="1" SmallChange="1" LargeChange="4" Value="{Binding VolumeValue}"/>
+                </DockPanel>
+              </StackPanel>
+            </DockPanel>
+            <DockPanel Margin="0,12,0,0">
+              <TextBlock Text="&#xE9E9;" Style="{StaticResource TrayIcon}"/>
+              <StackPanel>
+                <TextBlock Text="Equalizer" Style="{StaticResource TrayLabel}"/>
+                <ItemsControl ItemsSource="{Binding EqPills}" ItemTemplate="{StaticResource Pill}" Margin="-3,0">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><UniformGrid Columns="3"/></ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                </ItemsControl>
+              </StackPanel>
+            </DockPanel>
+          </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource TrayCard}" Margin="0,10,0,0">
+          <StackPanel>
+            <DockPanel>
+              <TextBlock Text="&#xE720;" Style="{StaticResource TrayIcon}"/>
+              <StackPanel>
+                <TextBlock Text="Sidetone" Style="{StaticResource TrayLabel}"/>
+                <DockPanel IsEnabled="{Binding HasBoomSidetone}">
+                  <TextBlock DockPanel.Dock="Right" Text="{Binding BoomSidetoneText}" Width="40" TextAlignment="Right"/>
+                  <Slider Minimum="0" Maximum="100" IsSnapToTickEnabled="True" TickFrequency="1" SmallChange="1" LargeChange="10" Value="{Binding BoomSidetoneValue}"/>
+                </DockPanel>
+              </StackPanel>
+            </DockPanel>
+            <DockPanel Margin="0,12,0,0">
+              <TextBlock Text="&#xE7FC;" Style="{StaticResource TrayIcon}"/>
+              <StackPanel>
+                <TextBlock Text="Game mix" Style="{StaticResource TrayLabel}"/>
+                <DockPanel IsEnabled="{Binding CanBalance}">
+                  <TextBlock DockPanel.Dock="Right" Text="{Binding BalanceText}" Width="40" TextAlignment="Right"/>
+                  <Slider Minimum="0" Maximum="20" IsSnapToTickEnabled="True" TickFrequency="1" SmallChange="1" LargeChange="2" Value="{Binding BalanceValue}"/>
+                </DockPanel>
+                <TextBlock Text="Connect the 2.4 GHz dongle to mix game and chat." Style="{StaticResource Hint}" Margin="0,4,0,0" Visibility="{Binding NoDongleVisibility}"/>
+              </StackPanel>
+            </DockPanel>
+            <Border Height="1" Background="#333333" Margin="0,12"/>
+            <DockPanel Visibility="{Binding TurnOffRowVisibility}">
+              <TextBlock Text="&#xE7E8;" Style="{StaticResource TrayIcon}"/>
+              <Button DockPanel.Dock="Right" Content="Turn off" Style="{StaticResource TrayButton}" Click="TurnOff"/>
+              <TextBlock Text="Turn off headset" VerticalAlignment="Center"/>
+            </DockPanel>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+
+      <Border Style="{StaticResource TrayCard}" Visibility="{Binding PowerOffVisibility}">
+        <DockPanel>
+          <TextBlock Text="&#xE7E8;" Style="{StaticResource TrayIcon}"/>
+          <Button DockPanel.Dock="Right" Content="Cancel" Style="{StaticResource TrayButton}" Click="CancelTurnOff"/>
+          <TextBlock Text="{Binding PowerOffText}" VerticalAlignment="Center"/>
+        </DockPanel>
+      </Border>
+
+      <Border Style="{StaticResource TrayCard}" Visibility="{Binding DisconnectedVisibility}">
+        <TextBlock Text="{Binding Status}" Foreground="{StaticResource Muted}" TextWrapping="Wrap" TextAlignment="Center"/>
+      </Border>
+
+      <TextBlock Text="{Binding Banner}" Foreground="#FFD54F" FontSize="11" Margin="4,8,4,0" TextWrapping="Wrap" Visibility="{Binding BannerVisibility}"/>
+
+      <UniformGrid Columns="2" Margin="0,10,0,0">
+        <Button Style="{StaticResource TrayButton}" Margin="0,0,5,0" Click="OpenWindow">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="&#xE8A7;" FontFamily="Segoe MDL2 Assets" Margin="0,2,8,0"/>
+            <TextBlock Text="Open window"/>
+          </StackPanel>
+        </Button>
+        <Button Style="{StaticResource TrayButton}" Margin="5,0,0,0" Click="Quit">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" Margin="0,2,8,0"/>
+            <TextBlock Text="Quit"/>
+          </StackPanel>
+        </Button>
+      </UniformGrid>
+    </StackPanel>
+  </Border>
+</Window>

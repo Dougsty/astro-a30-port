@@ -283,6 +283,12 @@ implemented in this firmware, not a bad argument.
   `sdp.py` (SDP dump, superseded by `run.sh --sdp`), `probe.py` (BLE/bleak, wrong transport).
   The Python ones need a venv with `bleak` and `pyobjc-framework-IOBluetooth` (deleted; recreate if needed)
 - `docs/superpowers/` — app spec, plan and manual checklist
+- `A30Control.Windows/` — Windows port (C#/.NET 8, WPF): `A30Kit/` protocol (port of the Swift A30Kit +
+  `HeadsetLink` with iAP2/raw-SPP auto-detect), `A30Kit.SelfTest/`, `A30Control/` app, `installer/`
+  (NSIS, per-user). `selftest.sh`, `build.sh` (→ `dist/A30Control-Setup-<ver>.exe` + portable exe),
+  `build.ps1` for building on Windows. .NET SDK in `~/.dotnet`, `makensis` from Homebrew; builds run
+  from a snapshot in `~/Library/Caches/A30Control.Windows/` (iCloud evicts files). Not yet tested on
+  real Windows hardware.
 - `jadx/` — `jadx 1.5.6 --no-res` output of the base APK from `~/Downloads/Logitech+G_2.2.21_APKPure.xapk`.
   Protocol: `jadx/sources/com/logitech/ue/centurion/` (`cpp/device/CPPDevice.java` = every request encoder).
   App logic: `jadx/sources/com/astrogaming/scorpius/headset/` (`carbonite/` = A30).
